@@ -21,6 +21,10 @@ logger.addHandler(hdl)
 logger.setLevel(logging.INFO)
 logger.propagate = False
 
+# FIXME: avoid global
+logger = logging.getLogger('ploceus.helper')
+
+
 def log(message, prefix=''):
     from ploceus.runtime import context_manager
 
