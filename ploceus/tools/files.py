@@ -219,6 +219,22 @@ def upload_template(dest, template=None, contents=None,
         os.unlink(localpath)
 
 
+def render_template(src, ctx, dest=None):
+    """
+    render template from src with ctx, and optionally write to dest
+
+    **all hapended on local host**
+    """
+    with open(src) as f:
+        content = f.read()
+    t = jinja2.Template(content, keep_trailing_newline=True)
+    rv = t.render(**ctx)
+    if dest:
+        with open(dest, 'w') as f:
+            f.write(rv)
+    return rv
+
+
 def md5sum(path, use_sudo=False):
     _ = (use_sudo and sudo) or run
     return _('md5sum %s' % path,
