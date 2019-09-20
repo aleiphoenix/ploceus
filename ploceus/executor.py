@@ -3,11 +3,11 @@ import time
 
 from ploceus import g
 from ploceus.exceptions import ArgumentError, PloceusError
-from ploceus.inventory import Inventory
 from ploceus.runtime import context_manager, env
 from ploceus.ssh import SSHClient
 
 from ploceus.logger import logger
+
 
 def group_task(tasks, group, inventory=None,
                sleep=None, parallel=None,
@@ -72,7 +72,6 @@ def run_task(tasks, hosts,
         raise PloceusError('parallel mode no implemented yet.')
 
     rv = {}
-    runner = TaskRunner()
     username = None
     password = None
 
@@ -94,11 +93,24 @@ def run_task(tasks, hosts,
     for f in env.setup_hooks:
         f(cli_options=cli_options)
 
-    for task in tasks:
+    remote_tasks = filter(lambda x: x.local_mode is False, tasks)
+    local_tasks = filter(lambda x: x.local_mode is True, tasks)
+
+    sshclients = []
+
+    for task in remote_tasks:
         for host in hosts:
-            context = context_manager.get_context()
             hostname = host
-            # connect to remote host
+
+            # setting context
+            context = context_manager.get_context()
+            context['password'] = password
+            context['username'] = username
+            context['host_string'] = hostname
+
+            sshclient = SSHClient()
+            context.sshclient = sshclient
+            sshclients.append(sshclient)
 
             if not username:
                 username = task.ssh_user
@@ -108,17 +120,8 @@ def run_task(tasks, hosts,
                 if not username:
                     username = _
 
-            # setting context
-            context['password'] = password
-            context['username'] = username
-            context['host_string'] = hostname
-
             logger.debug('username: {}'.format(username))
             logger.debug('task.ssh_user: {}'.format(task.ssh_user))
-
-            client = SSHClient()
-            runner.append_ssh_client(client)
-            context.sshclient = client
 
             # ansible like host_vars
             extra_vars = extra_vars or {}
@@ -130,29 +133,18 @@ def run_task(tasks, hosts,
         if sleep:
             time.sleep(sleep)
 
-    runner.dispose_ssh_clients()
+    for task in local_tasks:
+        hostname = '_local'  # FIXME: temporary fix
+        context = context_manager.get_context()
+        context['cwd'] = env.cwd
+        context['host_string'] = hostname
+        context['password'] = None
+        context['username'] = None
+        rv[hostname] = task.run(extra_vars={}, **kwargs)
+
+    # FIXME: May have nested call in tasks, dispose connection
+    # after all tasks have been executed. A try-catch-finally will be better
+    for c in sshclients:
+        c.close()
+
     return rv
-
-
-class TaskRunner(object):
-    """runner to carry out a task
-    """
-
-    ssh_clients = []
-
-    def append_ssh_client(self, client):
-        """register ssh client to TaskRunner
-
-        Args:
-            client (ploceus.ssh.SSHClient): client to record
-        """
-        self.ssh_clients.append(client)
-
-
-    def dispose_ssh_clients(self):
-        """close all ssh clients registered.
-        """
-        for c in self.ssh_clients:
-            c.close()
-
-        del self.ssh_clients[:]

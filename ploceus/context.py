@@ -12,7 +12,6 @@ class Context(dict):
         self.sshclient = None
 
     def get_client(self):
-
         if not self.sshclient._connected:
 
             username = self['username']

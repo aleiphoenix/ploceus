@@ -55,8 +55,9 @@ class Task(object):
     func = None
     ssh_user = None
     name = None
+    local_mode = False
 
-    def __init__(self, func, ssh_user=None):
+    def __init__(self, func, ssh_user=None, *args, **options):
         """create a ``Task'' object, register it to global store
         """
         def new_func(*_args, **_kwargs):
@@ -69,6 +70,8 @@ class Task(object):
         self.wrapped = func
         self.func = new_func
         self.ssh_user = ssh_user
+        if options.get('local_mode'):
+            self.local_mode = True
 
         module = func.__module__
         if module.lower() == 'ploceusfile':
