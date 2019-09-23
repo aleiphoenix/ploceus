@@ -1,12 +1,38 @@
 # -*- coding: utf-8 -*-
 from contextlib import contextmanager
 import os
+import warnings
 
 
-from ploceus.utils._collections import ThreadLocalRegistry
+from ploceus.utils.collections import ThreadLocalRegistry
+from ploceus.utils.local import LocalStack
+
+
+class Scope(dict):
+    """
+    top level scope for internal usage
+
+    It is intented for tracking for TaskExecutor context
+    like a stack for nested situation.
+    """
+    def __init__(self):
+        self.stack = LocalStack()
+
+    @property
+    def top(self):
+        return self.stack.top
+
+    def push(self, v):
+        return self.stack.push(v)
+
+    def pop(self):
+        return self.stack.pop()
 
 
 class Context(dict):
+    """
+    context for single task execution
+    """
 
     def __init__(self):
         self.sshclient = None
@@ -32,25 +58,55 @@ class Context(dict):
         return self.sshclient
 
 
+def get_current_scope():
+    """
+    magic GLOBAL STATIC function for get current scope,
+    using ThreadingLocal
+
+    It's even valid to use in a multi-threading context.
+
+    t1 = threading.Thread(
+        target=run_task, args=(task1, ['localhost', 'remote'],))
+    t2 = threading.Thread(
+        target=run_task, args=(task1, ['localhost', 'remote'],))
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+    """
+    return scope_registry()
+
+
+# proxy storage for Scope instances...
+# intented for multi-threading usage, so ThreadingLocal()
+scope_registry = ThreadLocalRegistry(lambda: Scope())
+
+
 def new_context():
     rv = Context()
     rv['extra_vars'] = {}
     return rv
 
 
-# TODO: scope
 class ContextManager(object):
+    """
+    Somehow deprecated usage, for compatibility purpose
 
-    def __init__(self):
-        self.context = ThreadLocalRegistry(new_context)
-
+    context_manager.get_context()
+    """
     def get_context(self):
         """
-        2018-08-14
-        该方法第一次调用，即生成 ctx
-        是在 ploceus.executor.run_task 方法中
+        get task execution context
+
+        context is now in "/scope_stack/task_ident/..."
         """
-        return self.context()
+        rv = get_current_scope().top
+        if rv is None:
+            msg = ('should not using any scope/context-award function'
+                   'in bare python code')
+            warnings.warn(msg)
+            return Context()
+        return rv
 
 
 def cd(path):

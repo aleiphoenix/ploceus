@@ -2,5 +2,9 @@
 from ploceus.context import ContextManager
 from ploceus.environment import Environment
 
+
+default_env = Environment()
+
+# deprecated name
 context_manager = ContextManager()
-env = Environment()
+env = default_env

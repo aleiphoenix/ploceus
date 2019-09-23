@@ -2,6 +2,7 @@
 import time
 
 from ploceus import g
+from ploceus.context import Context, get_current_scope
 from ploceus.exceptions import ArgumentError, PloceusError
 from ploceus.runtime import context_manager, env
 from ploceus.ssh import SSHClient
@@ -49,7 +50,8 @@ def group_task(tasks, group, inventory=None,
 def run_task(tasks, hosts,
              sleep=None, parallel=None,
              ssh_user=None, ssh_pwd=None,
-             extra_vars=None, cli_options=None, **kwargs):
+             extra_vars=None, cli_options=None,
+             **kwargs):
     """Programmable interface for running tasks,
     could be used by any 3rd-party Python code or plocues itself.
 
@@ -100,9 +102,12 @@ def run_task(tasks, hosts,
 
     for task in remote_tasks:
         for host in hosts:
-            hostname = host
+            # intialize scope & push stack
+            scope = get_current_scope()
+            scope.push(Context())
 
-            # setting context
+            # prepare context
+            hostname = host
             context = context_manager.get_context()
             context['password'] = password
             context['username'] = username
@@ -130,10 +135,17 @@ def run_task(tasks, hosts,
 
             rv[hostname] = task.run(extra_vars=extra_vars, **kwargs)
 
+            # pop scope stack
+            scope.pop()
+
         if sleep:
             time.sleep(sleep)
 
     for task in local_tasks:
+        # intialize scope & push stack
+        scope = get_current_scope()
+        scope.push(Context())
+
         hostname = '_local'  # FIXME: temporary fix
         context = context_manager.get_context()
         context['cwd'] = env.cwd
@@ -141,6 +153,8 @@ def run_task(tasks, hosts,
         context['password'] = None
         context['username'] = None
         rv[hostname] = task.run(extra_vars={}, **kwargs)
+
+        scope.pop()
 
     # FIXME: May have nested call in tasks, dispose connection
     # after all tasks have been executed. A try-catch-finally will be better
